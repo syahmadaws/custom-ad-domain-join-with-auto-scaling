@@ -242,11 +242,12 @@ Resources:
         IamInstanceProfile:
           Arn: !GetAtt 'IamInstanceProfile.Arn'
         UserData: !Base64
-          Fn::Join:
-            - ''
-            - - "<powershell>\n"
-              - "Add-WindowsFeature -Name Web-Server | Out-Null\n"
-              - </powershell>
+          Fn::Join: -|
+            <powershell>
+            Add-WindowsFeature -Name Web-Server | Out-Null
+            Add-Content c:\inetpub\wwwroot\default.aspx '<%@ Page Title="" Language="C#" Trace="true"%>'
+            del c:\inetpub\wwwroot\iisstart.htm
+            </powershell>
   ALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
