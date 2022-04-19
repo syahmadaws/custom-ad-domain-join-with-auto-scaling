@@ -1,0 +1,213 @@
+description: |-
+  This document will join or unjoin an EC2 Windows instance to an Active Directory domain.
+
+  **Prerequisites**
+
+  This runbook requires parameters stored in SSM Parameter Store to complete the domain join and unjoining activities. This includes the AD domain name (FQDN), AD username, AD password, and a targetOU. Create new parameters with the following names, value, and type:
+
+  **domainName** : *corp.example.com*
+  - Type: String
+
+  **domainJoinUserName** : *CORP\domainadmin*
+  - Type: String
+
+  **domainJoinPassword** : *YOURSECRET*
+  - Type: SecureString
+  - Requires an AWS KMS key
+
+  **defaultTargetOU** : *OU=Servers,OU=CORP,dc=corp,dc=example,dc=com*
+  - Type: String
+schemaVersion: '0.3'
+assumeRole: '{{AutomationAssumeRole}}'
+parameters:
+  InstanceId:
+    type: String
+    description: (Required) The Instance running Windows Server.
+  DomainJoinActivity:
+    type: String
+    description: '(Required) Select which AD domain activity to perform, join an AD domain or unjoin an AD domain.'
+    allowedValues:
+      - Join
+      - Unjoin
+      - ''
+  LifecycleTransition:
+    type: String
+    description: '(Optional) Auto Scaling Group Lifecyle Transition, launching or terminating, to determine domain join or unjoin activities. NOTE, Amazon EventBridge leverages this parameter.'
+    default: ''
+  AutomationAssumeRole:
+    type: String
+    description: (Optional) The ARN of the role that allows Automation to perform the actions on your behalf.
+    default: ''
+mainSteps:
+  - name: chooseDomainJoinActivity
+    action: 'aws:branch'
+    inputs:
+      Choices:
+        - Or:
+            - Variable: '{{LifecycleTransition}}'
+              StringEquals: 'autoscaling:EC2_INSTANCE_LAUNCHING'
+            - Variable: '{{DomainJoinActivity}}'
+              StringEquals: Join
+          NextStep: createRandomHost
+        - Or:
+            - Variable: '{{LifecycleTransition}}'
+              StringEquals: 'autoscaling:EC2_INSTANCE_TERMINATING'
+            - Variable: '{{DomainJoinActivity}}'
+              StringEquals: Unjoin
+          NextStep: unjoinDomain
+    isCritical: 'true'
+    isEnd: false
+    timeoutSeconds: 60
+    description: 'Determine the appropriate AD domain activity, join or unjoin.'
+  - name: createRandomHost
+    action: 'aws:executeScript'
+    inputs:
+      Runtime: PowerShell Core 6.0
+      Script: |-
+        $tenChar = (-join ((97..122) | Get-Random -Count 10 | % {[char]$_})).ToUpper()
+        $newHost = "SSM-$tenChar"
+        return $newHost
+    outputs:
+      - Name: newHost
+        Selector: $.Payload
+        Type: String
+    isCritical: 'true'
+    isEnd: false
+    timeoutSeconds: 60
+    nextStep: createEC2NameTag
+    description: Create random string.
+  - name: createEC2NameTag
+    action: 'aws:createTags'
+    inputs:
+      ResourceType: EC2
+      ResourceIds:
+        - '{{InstanceId}}'
+      Tags:
+        - Key: Name
+          Value: '{{createRandomHost.newHost}}'
+        - Key: ADJoined
+          Value: Joined
+    timeoutSeconds: 60
+    isEnd: false
+    description: Tag EC2 instance with random string. (Meetings Windows Server minimum requirements.)
+    nextStep: joinDomain
+  - name: joinDomain
+    action: 'aws:runCommand'
+    inputs:
+      DocumentName: AWS-RunPowerShellScript
+      InstanceIds:
+        - '{{ InstanceId }}'
+      Parameters:
+        commands: |-
+          # Define AD domain specific variables. This is a combination of EC2 Tag values and SSM Parameter Store objects.
+          $targetOU = (Get-SSMParameterValue -Name "defaultTargetOU-Windows").Parameters[0].Value
+          $domainName = (Get-SSMParameterValue -Name "domainName").Parameters[0].Value
+          $domainJoinUserName = (Get-SSMParameterValue -Name "domainJoinUserName").Parameters[0].Value
+          $domainJoinPassword = (Get-SSMParameterValue -Name "domainJoinPassword" -WithDecryption:$true).Parameters[0].Value | ConvertTo-SecureString -AsPlainText -Force
+          $domainCredential = New-Object System.Management.Automation.PSCredential($domainJoinUserName,$domainJoinPassword)
+          #$instanceId = Invoke-RestMethod -Uri http://169.254.169.254/latest/meta-data/instance-id
+          $instanceId = '{{InstanceId}}'
+          $newName = (Get-EC2Tag -Filter @{Name="resource-id";Values=$instanceId},@{Name="key";Values="Name"}).Value
+
+          # Domain join check. If the server is not part of a domain (in a Windows Workgroup), then the server will be joined to the domain.
+          if ((Get-WmiObject -Class Win32_ComputerSystem).PartOfDomain -eq $false) {
+            Add-Computer -ComputerName $env:COMPUTERNAME -DomainName $domainName -NewName $newName -Credential $domainCredential -OUPath $targetOU -ErrorAction Stop -Restart:$false
+            Write-Host "Joining $env:COMPUTERNAME to Active Directory domain: $domainName.`nMoving $env:COMPUTERNAME to the following OU: $targetOU.`n"
+            Restart-Computer -Force
+            exit 3010
+          }
+    description: Execute PowerShell locally on EC2 instance to join the AD domain.
+    timeoutSeconds: 600
+    isEnd: false
+    nextStep: describeADComputer
+  - name: describeADComputer
+    action: 'aws:runCommand'
+    inputs:
+      DocumentName: AWS-RunPowerShellScript
+      InstanceIds:
+        - '{{ InstanceId }}'
+      Parameters:
+        commands: |-
+          # RSAT AD Tools check.
+          if (-not (Get-WindowsFeature -Name RSAT-AD-Tools).Installed) {
+            Write-Host "Installing RSAT AD Tools to modify the AD Computer description.`n"
+            Add-WindowsFeature -Name RSAT-AD-Tools | Out-Null
+            Write-Host "Installation of RSAT AD Tools completed.`n"
+          }
+
+          $identity = $env:COMPUTERNAME
+          $domainName = (Get-SSMParameterValue -Name "domainName").Parameters[0].Value
+          $domainJoinUserName = (Get-SSMParameterValue -Name "domainJoinUserName").Parameters[0].Value
+          $domainJoinPassword = (Get-SSMParameterValue -Name "domainJoinPassword" -WithDecryption:$true).Parameters[0].Value | ConvertTo-SecureString -AsPlainText -Force
+          $domainCredential = New-Object System.Management.Automation.PSCredential($domainJoinUserName,$domainJoinPassword)
+
+          Write-Host "$identity has successfully joined $domainName.`n"
+
+          # Update AD Computer description.
+          $instanceId = Invoke-RestMethod -Uri http://169.254.169.254/latest/meta-data/instance-id
+          Set-ADComputer -Identity $identity -Description "$instanceId" -Credential $domainCredential
+
+          # Remove RSAT AD Tools from the server.
+          Write-Host "Removing RSAT AD Tools from $identity."
+          Remove-WindowsFeature -Name RSAT-AD-Tools | Out-Null
+          Write-Host "Uninstallation of RSAT AD Tools completed.`n"
+
+          # Restart the computer one last time to complete the entire process.
+          Write-Host "Restarting the server one last time."
+          Restart-Computer -Force
+          exit 0
+    description: Add the InstanceID to the AD Computers description.
+    timeoutSeconds: 600
+    isEnd: true
+  - name: unjoinDomain
+    action: 'aws:runCommand'
+    inputs:
+      DocumentName: AWS-RunPowerShellScript
+      InstanceIds:
+        - '{{ InstanceId }}'
+      Parameters:
+        commands: |-
+          # Define AD domain specific variables. This is a combination of EC2 Tag values and SSM Parameter Store objects.
+          $domainName = (Get-SSMParameterValue -Name domainName).Parameters[0].Value
+          $domainJoinUserName = (Get-SSMParameterValue -Name "domainJoinUserName").Parameters[0].Value
+          $domainJoinPassword = (Get-SSMParameterValue -Name "domainJoinPassword" -WithDecryption:$true).Parameters[0].Value | ConvertTo-SecureString -AsPlainText -Force
+          $domainCredential = New-Object System.Management.Automation.PSCredential($domainJoinUserName,$domainJoinPassword)
+
+          if (-not (Get-WindowsFeature -Name RSAT-AD-Tools).Installed) {
+              Write-Host "Installing RSAT AD Tools to allow domain joining.`n"
+              Add-WindowsFeature -Name RSAT-AD-Tools | Out-Null
+              Write-Host "Installation of RSAT AD Tools completed.`n"
+          }
+
+          $getADComputer = (Get-ADComputer -Identity $env:COMPUTERNAME -Credential $domainCredential)
+          $distinguishedName = $getADComputer.DistinguishedName
+
+          # Domain join check
+          if ((Get-WmiObject -Class Win32_ComputerSystem).PartOfDomain -eq $true) {
+              Write-Host "Unjoining $env:COMPUTERNAME from Active Directory domain: $domainName.`n"
+
+              # Unjoin from AD and remove the AD computer object.'
+              Remove-Computer -ComputerName $env:COMPUTERNAME -UnjoinDomaincredential $domainCredential -Verbose -Force -Restart:$false
+              Remove-ADComputer -Credential $domainCredential -Identity $distinguishedName -Server $domainName -Confirm:$False -Verbose
+
+              Write-Host "$env:COMPUTERNAME has unjoined from the $domainName domain and in a Windows Workgroup."
+          } else {
+              Write-Host "$env:COMPUTERNAME is not part of the Active Directory domain $domainName and already part of a Windows Workgroup."
+          }
+          exit 0
+    description: Execute PowerShell locally on EC2 instance to unjoin from the AD domain.
+    timeoutSeconds: 600
+    isEnd: false
+    nextStep: updateEC2Tag
+  - name: updateEC2Tag
+    action: 'aws:createTags'
+    inputs:
+      ResourceType: EC2
+      Tags:
+        - Key: ADJoined
+          Value: 'No'
+      ResourceIds:
+        - '{{ InstanceId }}'
+    description: Update the ADJoined EC2 tag to reflect removal from AD domain.
+    timeoutSeconds: 60
+    isEnd: true
