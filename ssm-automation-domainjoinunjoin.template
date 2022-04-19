@@ -105,7 +105,6 @@ mainSteps:
           $domainJoinUserName = (Get-SSMParameterValue -Name "domainJoinUserName").Parameters[0].Value
           $domainJoinPassword = (Get-SSMParameterValue -Name "domainJoinPassword" -WithDecryption:$true).Parameters[0].Value | ConvertTo-SecureString -AsPlainText -Force
           $domainCredential = New-Object System.Management.Automation.PSCredential($domainJoinUserName,$domainJoinPassword)
-          #$instanceId = Invoke-RestMethod -Uri http://169.254.169.254/latest/meta-data/instance-id
           $instanceId = '{{InstanceId}}'
           $newName = (Get-EC2Tag -Filter @{Name="resource-id";Values=$instanceId},@{Name="key";Values="Name"}).Value
 
@@ -144,7 +143,7 @@ mainSteps:
           Write-Host "$identity has successfully joined $domainName.`n"
 
           # Update AD Computer description.
-          $instanceId = Invoke-RestMethod -Uri http://169.254.169.254/latest/meta-data/instance-id
+          $instanceId = '{{InstanceId}}'
           Set-ADComputer -Identity $identity -Description "$instanceId" -Credential $domainCredential
 
           # Remove RSAT AD Tools from the server.
