@@ -241,12 +241,10 @@ Resources:
             - !Ref 'LaunchTemplateSecurityGroupParameter'
         IamInstanceProfile:
           Arn: !GetAtt 'IamInstanceProfile.Arn'
-        UserData: !Base64
-          Fn::Join: -|
+        UserData:
+          Fn::Base64: !Sub |
             <powershell>
             Add-WindowsFeature -Name Web-Server | Out-Null
-            Add-Content c:\inetpub\wwwroot\default.aspx '<%@ Page Title="" Language="C#" Trace="true"%>'
-            del c:\inetpub\wwwroot\iisstart.htm
             </powershell>
   ALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
@@ -317,7 +315,7 @@ Resources:
       LifecycleHookSpecificationList:
         - LifecycleTransition: autoscaling:EC2_INSTANCE_LAUNCHING
           LifecycleHookName: DomainJoinLaunchHook
-          HeartbeatTimeout: 240
+          HeartbeatTimeout: 300
           DefaultResult: CONTINUE
         - LifecycleTransition: autoscaling:EC2_INSTANCE_TERMINATING
           LifecycleHookName: DomainUnjoinLaunchHook
