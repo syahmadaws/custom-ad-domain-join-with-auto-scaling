@@ -1,7 +1,7 @@
 description: |-
   This document will join or unjoin an EC2 Windows instance to an Active Directory domain.
 
-  **Prerequisites**
+  ## Create parameters in Parameter Store
 
   The Automation runbook requires parameters stored in SSM Parameter Store to complete the domain join and unjoining activities. This includes the AD domain name (FQDN), AD username, AD password, and a targetOU. To learn more about Parameter Store, visit the [AWS documentation](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-parameter-store.html).
 
