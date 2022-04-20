@@ -22,7 +22,7 @@ assumeRole: '{{AutomationAssumeRole}}'
 parameters:
   InstanceId:
     type: String
-    description: (Required) The Instance running Windows Server.
+    description: '(Required) The Instance running Windows Server.'
   DomainJoinActivity:
     type: String
     description: '(Required) Select which AD domain activity to perform, join an AD domain or unjoin an AD domain.'
@@ -30,13 +30,14 @@ parameters:
       - Join
       - Unjoin
       - ''
+    default: ''
   LifecycleTransition:
     type: String
     description: '(Optional) Auto Scaling Group Lifecyle Transition, launching or terminating, to determine domain join or unjoin activities. NOTE, Amazon EventBridge leverages this parameter.'
     default: ''
   AutomationAssumeRole:
     type: String
-    description: (Optional) The ARN of the role that allows Automation to perform the actions on your behalf.
+    description: '(Optional) The ARN of the role that allows Automation to perform the actions on your behalf.'
     default: ''
 mainSteps:
   - name: chooseDomainJoinActivity
