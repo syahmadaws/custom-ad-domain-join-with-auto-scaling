@@ -3,20 +3,30 @@ description: |-
 
   **Prerequisites**
 
-  This runbook requires parameters stored in SSM Parameter Store to complete the domain join and unjoining activities. This includes the AD domain name (FQDN), AD username, AD password, and a targetOU. Create new parameters with the following names, value, and type:
+  The Automation runbook requires parameters stored in SSM Parameter Store to complete the domain join and unjoining activities. This includes the AD domain name (FQDN), AD username, AD password, and a targetOU. To learn more about Parameter Store, visit the [AWS documentation](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-parameter-store.html).
 
-  **domainName** : *corp.example.com*
-  - Type: String
+  Create new parameters with the following names, value, and type (the values are cAsE-SeNsItIvE):
 
-  **domainJoinUserName** : *CORP\domainadmin*
-  - Type: String
+  AD domain name
+  - **Name** : *domainName*
+  - **Value** : *corp.example.com*
+  - **Type** : String
 
-  **domainJoinPassword** : *YOURSECRET*
-  - Type: SecureString
-  - Requires an AWS KMS key
+  AD user with domain join rights
+  - **Name** : *domainJoinUserName*
+  - **Value** : *CORP\domainadmin*
+  - **Type** : String
 
-  **defaultTargetOU** : *OU=Servers,OU=CORP,dc=corp,dc=example,dc=com*
-  - Type: String
+  AD user password
+  *Requires an AWS KMS key*
+  - **Name** : *domainJoinPassword*
+  - **Value** : *YOURSECRET*
+  - **Type** : SecureString
+
+  Specify the target Organization Unit (OU) for the domain account.
+  - **Name** : *defaultTargetOU*
+  - **Value** : *OU=Servers,OU=CORP,dc=corp,dc=example,dc=com*
+  - **Type** : String
 schemaVersion: '0.3'
 assumeRole: '{{AutomationAssumeRole}}'
 parameters:
