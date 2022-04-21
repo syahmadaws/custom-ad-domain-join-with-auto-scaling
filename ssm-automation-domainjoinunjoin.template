@@ -5,34 +5,39 @@ description: |-
 
   The Automation runbook requires parameters stored in SSM Parameter Store to complete the domain join and unjoining activities. This includes the AD domain name (FQDN), AD username, AD password, and a targetOU. To learn more about Parameter Store, visit the [AWS documentation](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-parameter-store.html).
 
-  Create new parameters with the following names, value, and type (the values are cAsE-SeNsItIvE):
+  Create new parameters as shown below (NOTE, the parameter names and values are cAsE-SeNsItIvE):
 
-  AD domain name
+  ## AD domain name
   - **Name** : *domainName*
+  - **Type** : String
+  - **Data type** : text
   - **Value** : *corp.example.com*
-  - **Type** : String
 
-  AD user with domain join rights
+  ## AD user with domain join rights
   - **Name** : *domainJoinUserName*
-  - **Value** : *CORP\domainadmin*
   - **Type** : String
+  - **Data type** : text
+  - **Value** : *CORP\domainadmin*
 
-  AD user password
+  ## AD user password
   *Requires an AWS KMS key*
   - **Name** : *domainJoinPassword*
-  - **Value** : *YOURSECRET*
   - **Type** : SecureString
+  - **Data type** : text
+  - **Value** : *YOURSECRET*
+    - NOTE, the secret requires an AWS KMS key ID.
 
-  Specify the target Organization Unit (OU) for the domain account.
+  ## Specify the target Organization Unit (OU) for the domain account.
   - **Name** : *defaultTargetOU*
-  - **Value** : *OU=Servers,OU=CORP,dc=corp,dc=example,dc=com*
   - **Type** : String
+  - **Data type** : text
+  - **Value** : *OU=Servers,OU=CORP,dc=corp,dc=example,dc=com*
 schemaVersion: '0.3'
 assumeRole: '{{AutomationAssumeRole}}'
 parameters:
   InstanceId:
     type: String
-    description: '(Required) The Instance running Windows Server.'
+    description: (Required) The Instance running Windows Server.
   DomainJoinActivity:
     type: String
     description: '(Required) Select which AD domain activity to perform, join an AD domain or unjoin an AD domain.'
@@ -47,7 +52,7 @@ parameters:
     default: ''
   AutomationAssumeRole:
     type: String
-    description: '(Optional) The ARN of the role that allows Automation to perform the actions on your behalf.'
+    description: (Optional) The ARN of the role that allows Automation to perform the actions on your behalf.
     default: ''
 mainSteps:
   - name: chooseDomainJoinActivity
@@ -111,13 +116,12 @@ mainSteps:
       Parameters:
         commands: |-
           # Define AD domain specific variables. This is a combination of EC2 Tag values and SSM Parameter Store objects.
-          $targetOU = (Get-SSMParameterValue -Name "defaultTargetOU-Windows").Parameters[0].Value
+          $targetOU = (Get-SSMParameterValue -Name "defaultTargetOU").Parameters[0].Value
           $domainName = (Get-SSMParameterValue -Name "domainName").Parameters[0].Value
           $domainJoinUserName = (Get-SSMParameterValue -Name "domainJoinUserName").Parameters[0].Value
           $domainJoinPassword = (Get-SSMParameterValue -Name "domainJoinPassword" -WithDecryption:$true).Parameters[0].Value | ConvertTo-SecureString -AsPlainText -Force
           $domainCredential = New-Object System.Management.Automation.PSCredential($domainJoinUserName,$domainJoinPassword)
-          $instanceId = '{{InstanceId}}'
-          $newName = (Get-EC2Tag -Filter @{Name="resource-id";Values=$instanceId},@{Name="key";Values="Name"}).Value
+          $newName = '{{createRandomHost.newHost}}'
 
           # Domain join check. If the server is not part of a domain (in a Windows Workgroup), then the server will be joined to the domain.
           if ((Get-WmiObject -Class Win32_ComputerSystem).PartOfDomain -eq $false) {
