@@ -6,25 +6,30 @@ To get started, a new Automation runbook needs to be created in the account wher
 
 The Automation runbook requires parameters stored in SSM Parameter Store to complete the domain join and unjoining activities. This includes the AD domain name (FQDN), AD username, AD password, and a targetOU. To learn more about Parameter Store, visit the [AWS documentation](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-parameter-store.html).
 
-Create new parameters with the following names, value, and type (the values are cAsE-SeNsItIvE):
+Create new parameters as shown below (NOTE, the parameter names and values are cAsE-SeNsItIvE):
 
-AD domain name
+## AD domain name
 - **Name** : *domainName*
+- **Type** : String
+- **Data type** : text
 - **Value** : *corp.example.com*
-- **Type** : String
 
-AD user with domain join rights
+## AD user with domain join rights
 - **Name** : *domainJoinUserName*
-- **Value** : *CORP\domainadmin*
 - **Type** : String
+- **Data type** : text
+- **Value** : *CORP\domainadmin*
 
-AD user password
+## AD user password
 *Requires an AWS KMS key*
 - **Name** : *domainJoinPassword*
-- **Value** : *YOURSECRET*
 - **Type** : SecureString
+- **Data type** : text
+- **Value** : *YOURSECRET*
+  - NOTE, the secret requires an AWS KMS key ID.
 
-Specify the target Organization Unit (OU) for the domain account.
+## Specify the target Organization Unit (OU) for the domain account.
 - **Name** : *defaultTargetOU*
-- **Value** : *OU=Servers,OU=CORP,dc=corp,dc=example,dc=com*
 - **Type** : String
+- **Data type** : text
+- **Value** : *OU=Servers,OU=CORP,dc=corp,dc=example,dc=com*
