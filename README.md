@@ -4,6 +4,10 @@ Deploy a custom AWS Systems Manager Automation runbook that automatically domain
 # Deploy the Automation runbook and parameters
 To deploy the runbook and parameters, download the AWS CloudFormation template from Github, **cfn-create-ssm-automation-parameters-adjoin.template**, to create a new CloudFormation stack. To learn more about stack creation, visit the [AWS documentation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/GettingStarted.Walkthrough.html#GettingStarted.Walkthrough.createstack).
 
+![Create a stack](images\create_ssm_automation_cfn_stack_01.png)
+
+![Specificy stack details](images\create_ssm_automation_cfn_stack_02.png)
+
 ***
 
 Custom Active Directory (AD) domain join and unjoin with an AWS Systems Manager Automation runbook. The template leverages AWS Systems Manager Parameter Store for AD credentials and Organizational Unit (OU) management, custom PowerShell to perform basic domain join or domain unjoin (removal) from AD, and tags instances based on the action selected (Join or Unjoin). For scalability, the template also supports Auto Scaling groups based on [launch and termination lifecycle hooks](https://docs.aws.amazon.com/autoscaling/ec2/userguide/lifecycle-hooks.html). The Auto Scaling group is associated with an Elastic Load Balancer (ELB), both of which are launched using an included AWS CloudFormation template.
