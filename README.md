@@ -68,6 +68,7 @@ exit 3010
 ```
 
 ### AD computer object description update
+Notice the use of `$instanceId = '{{InstanceId}}'` in the code. PowerShell is creating a variable, `$instanceId`, that is used later in the script as part of the AD computer object's description, helping to identify the underlying EC2 instance Id. Rather than calling the instance Id through traditional means, for example the [Get-EC2InstanceMetadata Cmdlet](https://docs.aws.amazon.com/powershell/latest/reference/items/Get-EC2InstanceMetadata.html), we can pass parameters from Automation runbooks and pass them as into various steps of the runbook. To learn more about input parameters in runbooks, visit [AWS documentation](https://docs.aws.amazon.com/systems-manager/latest/userguide/populating-input-parameters.html).
 ```powershell
 # RSAT AD Tools check.
 if (-not (Get-WindowsFeature -Name RSAT-AD-Tools).Installed) {
@@ -131,7 +132,7 @@ if ((Get-WmiObject -Class Win32_ComputerSystem).PartOfDomain -eq $true) {
 exit 0
 ```
 
-Besides calling parameters from the Systems Manager Parameter Store, the PowerShell script should be familiar to any admin who leverages PowerShell AD cmdlets to execute domain join activities. There are **exit codes** specific to Systems Manager, aiding in activities where restarts are required and may require continuation of the PowerShell script. Learn more about exit codes by visiting [AWS documentation](https://docs.aws.amazon.com/systems-manager/latest/userguide/command-exit-codes.html).
+With the exception of the parameters from the Systems Manager Parameter Store, the PowerShell script should be familiar to any admin who leverages PowerShell AD cmdlets to execute domain join activities. There are **exit codes** specific to Systems Manager, aiding in activities where restarts are required and may require continuation of the PowerShell script. Learn more about exit codes by visiting [AWS documentation](https://docs.aws.amazon.com/systems-manager/latest/userguide/command-exit-codes.html).
 
 NOTE: this code can be customized as needed. Also, AD credentials are currently stored as parameters in Systems Manager Parameter Store. However, customers can choose to store these credentials as secrets in AWS Secrets Manager. To learn more about Secrest Manager, visit the [AWS documentation](https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html)
 ***
@@ -152,5 +153,4 @@ The components used in this environment are listed below.
 The Auto Scaling group is currently configured for manual scaling, i.e. an AWS user will have to change the desired capacity and minimum capacity. This is done for demo purposes and to demonstrate how the power of Systems Manager Automation when incorporated with event-driven services like Amazon EC2 Auto Scaling and Amazon EventBridge to build scalable architectures in AWS. Customers can use this as a building block for their AD environments hosted in AWS and build even more complex workflows where appropriate. Please note, automatic scaling through Amazon CloudWatch/EventBridge can be configured as needed in Auto Scaling as needed.
 
 ## Example of stack details configured to create an Amazon EC2 Launch Template, Elastic Load Balancer, Auto Scaling group, and the name of the Automation runbook created earlier.
-
-ImageTBD
+![Specificy stack details](images/create_asg_elb_ec2lt_cfn_stack_01.png)
