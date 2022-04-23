@@ -101,7 +101,7 @@ exit 0
 
 ### Domain unjoin
 ```powershell
-# Define AD domain specific variables. This is a combination of EC2 Tag values and SSM Parameter Store objects.
+# Define AD domain specific variables. AWS Systems Manager Parameter Store is where these parameters reside.
 $domainName = (Get-SSMParameterValue -Name domainName).Parameters[0].Value
 $domainJoinUserName = (Get-SSMParameterValue -Name "domainJoinUserName").Parameters[0].Value
 $domainJoinPassword = (Get-SSMParameterValue -Name "domainJoinPassword" -WithDecryption:$true).Parameters[0].Value | ConvertTo-SecureString -AsPlainText -Force
