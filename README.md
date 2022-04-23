@@ -2,7 +2,7 @@
 Deploy a custom AWS Systems Manager Automation runbook that automatically domain joins or unjoin from an Active Directory (AD) domain. This runbook can be used with on-premises AD or AWS Managed Microsoft AD and can be executed manually or automatically with services such as Amazon EventBridge or AWS Lambda. The runbook leverages parameters stored in AWS Systems Manager Parameter Store. In particular, 4 parameters are created that include the AD domain name, AD domain username, AD domain user's password, and a specific Organizational Unit (OU) in AD.
 
 # Deploy the Automation runbook and parameters
-To deploy the runbook and parameters, download the AWS CloudFormation template from Github, **cfn-create-ssm-automation-parameters-adjoin.template**, and create a new CloudFormation stack. Using the stack will simplify the deploy of the Automation runbook and create the appropriate parameters to perform the AD join/unjoin activities. To learn more about CloudFormation stack creation, visit the [AWS documentation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/GettingStarted.Walkthrough.html#GettingStarted.Walkthrough.createstack).
+To deploy the runbook and parameters, download the AWS CloudFormation template from Github, [**cfn-create-ssm-automation-parameters-adjoin.template**](cfn-create-ssm-automation-parameters-adjoin.template), and create a new CloudFormation stack. Using the stack will simplify the deployment of the Automation runbook and create the appropriate parameters to perform the AD join/unjoin activities. To learn more about CloudFormation stack creation, visit the [AWS documentation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/GettingStarted.Walkthrough.html#GettingStarted.Walkthrough.createstack). If you want to create the Automation runbook manually, you can download the template from [here](ssm-automation-domainjoinunjoin.template) and create a custom Automation runbook. Visit the AWS documentation to learn [how to create runbooks with the Document Builder](https://docs.aws.amazon.com/systems-manager/latest/userguide/automation-document-builder.html) or [how to create runbooks with the Editor](https://docs.aws.amazon.com/systems-manager/latest/userguide/automation-document-editor.html)
 
 ## Creating a stack in CloudFormation
 ![Create a stack](images/create_ssm_automation_cfn_stack_01.png)
@@ -139,7 +139,7 @@ NOTE: this code can be customized as needed. Also, AD credentials are currently 
 ***
 
 # Scalability example
-The CloudFormation template **cfn-deploy-ec2launchtemplate-asg-elb.template** allows customers to deploy Auto Scaling groups to build scalable architecture and leverage [launch and termination lifecycle hooks](https://docs.aws.amazon.com/autoscaling/ec2/userguide/lifecycle-hooks.html) to accomplish this.
+The CloudFormation template [**cfn-deploy-ec2launchtemplate-asg-elb.template**](cfn-deploy-ec2launchtemplate-asg-elb.template) allows customers to deploy Auto Scaling groups to build scalable architecture and leverage [launch and termination lifecycle hooks](https://docs.aws.amazon.com/autoscaling/ec2/userguide/lifecycle-hooks.html) to accomplish this.
 
 The components used in this environment are listed below.
 
@@ -149,7 +149,7 @@ The components used in this environment are listed below.
   *  Userdata configures IIS as a web server per EC2 instance
 * An Amazon EventBridge monitors events for Auto Scaling lifecycle changes
   * Specifically, EventBridge reacts to launch and termination lifecycle hooks to domain join or unjoin, respectively, an EC2 instances in the Auto Scaling group to AD automatically
-* To complete the domain join or unjoin activities, the EventBridge targets the Systems Manager Automation runbook created from **cfn-create-ssm-automation-parameters-adjoin.template**
+* To complete the domain join or unjoin activities, the EventBridge targets the Systems Manager Automation runbook created from [**cfn-create-ssm-automation-parameters-adjoin.template**](cfn-create-ssm-automation-parameters-adjoin.template)
 
 The Auto Scaling group is currently configured for manual scaling, i.e. an AWS user will have to change the desired capacity and minimum capacity. This is done for demo purposes and to demonstrate how the power of Systems Manager Automation when incorporated with event-driven services like Amazon EC2 Auto Scaling and Amazon EventBridge to build scalable architectures in AWS. Customers can use this as a building block for their AD environments hosted in AWS and build even more complex workflows where appropriate. Please note, automatic scaling through Amazon CloudWatch/EventBridge can be configured as needed in Auto Scaling as needed.
 
