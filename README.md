@@ -68,7 +68,7 @@ exit 3010
 ```
 
 ### AD computer object description update
-Notice the use of `$instanceId = '{{InstanceId}}'` in the code. PowerShell is creating a variable, `$instanceId`, that is used later in the script as part of the AD computer object's description, helping to identify the underlying EC2 instance Id. Rather than calling the instance Id through traditional means, for example the [Get-EC2InstanceMetadata Cmdlet](https://docs.aws.amazon.com/powershell/latest/reference/items/Get-EC2InstanceMetadata.html), we can pass parameters from Automation runbooks and pass them as into various steps of the runbook. To learn more about input parameters in runbooks, visit [AWS documentation](https://docs.aws.amazon.com/systems-manager/latest/userguide/populating-input-parameters.html).
+Notice the use of `$instanceId = '{{InstanceId}}'` in the code. PowerShell is creating a variable, `$instanceId`, that is used later in the script as part of the AD computer object's description, helping to identify the underlying EC2 instance Id. Rather than calling the instance Id through traditional means, for example the [Get-EC2InstanceMetadata Cmdlet](https://docs.aws.amazon.com/powershell/latest/reference/items/Get-EC2InstanceMetadata.html), we can pass parameters from Automation runbooks, in this case `'{{InstanceId}}'` which allows a user to define the EC2 instance Id to be executed manually or automatically by Systems Manager, and pass them as into various steps of the runbook. To learn more about input parameters in runbooks, visit [AWS documentation](https://docs.aws.amazon.com/systems-manager/latest/userguide/populating-input-parameters.html).
 ```powershell
 # RSAT AD Tools check.
 if (-not (Get-WindowsFeature -Name RSAT-AD-Tools).Installed) {
