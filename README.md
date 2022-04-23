@@ -61,10 +61,10 @@ $domainCredential = New-Object System.Management.Automation.PSCredential($domain
 
 # Domain join check. If the server is not part of a domain (in a Windows Workgroup), then the server will be joined to the domain.
 if ((Get-WmiObject -Class Win32_ComputerSystem).PartOfDomain -eq $false) {
-Add-Computer -ComputerName $env:COMPUTERNAME -DomainName $domainName -Credential $domainCredential -OUPath $targetOU -ErrorAction Stop -Restart:$false
-Write-Host "Joining $env:COMPUTERNAME to Active Directory domain: $domainName.`nMoving $env:COMPUTERNAME to the following OU: $targetOU.`n"
-Restart-Computer -Force
-exit 3010
+    Add-Computer -ComputerName $env:COMPUTERNAME -DomainName $domainName -Credential $domainCredential -OUPath $targetOU -ErrorAction Stop -Restart:$false
+    Write-Host "Joining $env:COMPUTERNAME to Active Directory domain: $domainName.`nMoving $env:COMPUTERNAME to the following OU: $targetOU.`n"
+    Restart-Computer -Force
+    exit 3010
 }
 ```
 
@@ -73,9 +73,9 @@ Notice the use of `$instanceId = '{{InstanceId}}'` in the code. PowerShell is cr
 ```powershell
 # RSAT AD Tools check.
 if (-not (Get-WindowsFeature -Name RSAT-AD-Tools).Installed) {
-Write-Host "Installing RSAT AD Tools to modify the AD Computer description.`n"
-Add-WindowsFeature -Name RSAT-AD-Tools | Out-Null
-Write-Host "Installation of RSAT AD Tools completed.`n"
+    Write-Host "Installing RSAT AD Tools to modify the AD Computer description.`n"
+    Add-WindowsFeature -Name RSAT-AD-Tools | Out-Null
+    Write-Host "Installation of RSAT AD Tools completed.`n"
 }
 
 $identity = $env:COMPUTERNAME
