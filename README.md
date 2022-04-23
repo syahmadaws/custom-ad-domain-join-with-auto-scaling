@@ -10,6 +10,8 @@ To deploy the runbook and parameters, download the AWS CloudFormation template f
 ## Example of stack details configured for an Automation runbook creation and parameters. NOTE: the password is hidden and created as a SecureString.
 ![Specificy stack details](images/create_ssm_automation_cfn_stack_02.png)
 
+***
+
 # Parameter Store
 The Automation runbook requires parameters stored in Systems Manager Parameter Store to complete the domain join and unjoining activities. This includes the AD domain name (FQDN), AD username, AD password, and a targetOU. To learn more about Parameter Store, visit the [AWS documentation](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-parameter-store.html).
 
@@ -43,5 +45,108 @@ The following parameters are created by the CloudFormation template (NOTE: the p
 
 ***
 
+## PowerShell
+
+Within the Systems Manager Automation runbook there are two steps where either domain join or domain unjoin activities are executed. These steps call a [Systems Manage Command document (SSM Document)](https://docs.aws.amazon.com/systems-manager/latest/userguide/sysman-ssm-docs.html) to execute this code. Specifically, the SSM Command document that is executed is **AWS-RunPowerShellScript**, which simply executes any code that is passed as parameter. Below are the PowerShell code blocks used to perform domain join, AD computer object updates, and domain unjoin activities, respectively.
+
+### Domain join
+```powershell
+# Define AD domain specific variables. AWS Systems Manager Parameter Store is where these parameters reside.
+$targetOU = (Get-SSMParameterValue -Name "defaultTargetOU").Parameters[0].Value
+$domainName = (Get-SSMParameterValue -Name "domainName").Parameters[0].Value
+$domainJoinUserName = (Get-SSMParameterValue -Name "domainJoinUserName").Parameters[0].Value
+$domainJoinPassword = (Get-SSMParameterValue -Name "domainJoinPassword" -WithDecryption:$true).Parameters[0].Value | ConvertTo-SecureString -AsPlainText -Force
+$domainCredential = New-Object System.Management.Automation.PSCredential($domainJoinUserName,$domainJoinPassword)
+
+# Domain join check. If the server is not part of a domain (in a Windows Workgroup), then the server will be joined to the domain.
+if ((Get-WmiObject -Class Win32_ComputerSystem).PartOfDomain -eq $false) {
+Add-Computer -ComputerName $env:COMPUTERNAME -DomainName $domainName -Credential $domainCredential -OUPath $targetOU -ErrorAction Stop -Restart:$false
+Write-Host "Joining $env:COMPUTERNAME to Active Directory domain: $domainName.`nMoving $env:COMPUTERNAME to the following OU: $targetOU.`n"
+Restart-Computer -Force
+exit 3010
+}
+```
+
+### AD computer object description update
+```powershell
+# RSAT AD Tools check.
+if (-not (Get-WindowsFeature -Name RSAT-AD-Tools).Installed) {
+Write-Host "Installing RSAT AD Tools to modify the AD Computer description.`n"
+Add-WindowsFeature -Name RSAT-AD-Tools | Out-Null
+Write-Host "Installation of RSAT AD Tools completed.`n"
+}
+
+$identity = $env:COMPUTERNAME
+$domainName = (Get-SSMParameterValue -Name "domainName").Parameters[0].Value
+$domainJoinUserName = (Get-SSMParameterValue -Name "domainJoinUserName").Parameters[0].Value
+$domainJoinPassword = (Get-SSMParameterValue -Name "domainJoinPassword" -WithDecryption:$true).Parameters[0].Value | ConvertTo-SecureString -AsPlainText -Force
+$domainCredential = New-Object System.Management.Automation.PSCredential($domainJoinUserName,$domainJoinPassword)
+
+Write-Host "$identity has successfully joined $domainName.`n"
+
+# Update AD Computer description.
+$instanceId = '{{InstanceId}}'
+Set-ADComputer -Identity $identity -Description "$instanceId" -Credential $domainCredential
+
+# Remove RSAT AD Tools from the server.
+Write-Host "Removing RSAT AD Tools from $identity."
+Remove-WindowsFeature -Name RSAT-AD-Tools | Out-Null
+Write-Host "Uninstallation of RSAT AD Tools completed.`n"
+
+# Restart the computer one last time to complete the entire process.
+Write-Host "Restarting the server one last time."
+Restart-Computer -Force
+exit 0
+```
+
+### Domain unjoin
+```powershell
+# Define AD domain specific variables. This is a combination of EC2 Tag values and SSM Parameter Store objects.
+$domainName = (Get-SSMParameterValue -Name domainName).Parameters[0].Value
+$domainJoinUserName = (Get-SSMParameterValue -Name "domainJoinUserName").Parameters[0].Value
+$domainJoinPassword = (Get-SSMParameterValue -Name "domainJoinPassword" -WithDecryption:$true).Parameters[0].Value | ConvertTo-SecureString -AsPlainText -Force
+$domainCredential = New-Object System.Management.Automation.PSCredential($domainJoinUserName,$domainJoinPassword)
+
+if (-not (Get-WindowsFeature -Name RSAT-AD-Tools).Installed) {
+    Write-Host "Installing RSAT AD Tools to allow domain joining.`n"
+    Add-WindowsFeature -Name RSAT-AD-Tools | Out-Null
+    Write-Host "Installation of RSAT AD Tools completed.`n"
+}
+
+$getADComputer = (Get-ADComputer -Identity $env:COMPUTERNAME -Credential $domainCredential)
+$distinguishedName = $getADComputer.DistinguishedName
+
+# Domain join check
+if ((Get-WmiObject -Class Win32_ComputerSystem).PartOfDomain -eq $true) {
+    Write-Host "Unjoining $env:COMPUTERNAME from Active Directory domain: $domainName.`n"
+
+    # Unjoin from AD and remove the AD computer object.'
+    Remove-Computer -ComputerName $env:COMPUTERNAME -UnjoinDomaincredential $domainCredential -Verbose -Force -Restart:$false
+    Remove-ADComputer -Credential $domainCredential -Identity $distinguishedName -Server $domainName -Confirm:$False -Verbose
+
+    Write-Host "$env:COMPUTERNAME has unjoined from the $domainName domain and in a Windows Workgroup."
+} else {
+    Write-Host "$env:COMPUTERNAME is not part of the Active Directory domain $domainName and already part of a Windows Workgroup."
+}
+exit 0
+```
+
+Besides calling parameters from the Systems Manager Parameter Store, the PowerShell script should be familiar to any admin who leverages PowerShell AD cmdlets to execute domain join activities. There are **exit codes** specific to Systems Manager, aiding in activities where restarts are required and may require continuation of the PowerShell script. Learn more about exit codes by visiting [AWS documentation](https://docs.aws.amazon.com/systems-manager/latest/userguide/command-exit-codes.html).
+
+NOTE: this code can be customized as needed. Also, AD credentials are currently stored as parameters in Systems Manager Parameter Store. However, customers can choose to store these credentials as secrets in AWS Secrets Manager. To learn more about Secrest Manager, visit the [AWS documentation](https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html)
+***
+
 # Scalability example
-The CloudFormation template **cfn-deploy-ec2launchtemplate-asg-elb.template** allows customers to deploy Auto Scaling groups to build scalable architecture and leverage [launch and termination lifecycle hooks](https://docs.aws.amazon.com/autoscaling/ec2/userguide/lifecycle-hooks.html) to accomplish this. The Auto Scaling group is associated with an Elastic Load Balancer (ELB), creates an Amazon EC2 Launch Template to configures the latest Windows Server 2019 Base Amazon Machine Image (AMI) and configures IIS as a web server. Finally an Amazon EventBridge monitors events for Auto Scaling lifecycle changes, specifically the aforementioned launch and termination lifecycle hooks, to domain join or unjoin the EC2 instances in the Auto Scaling group automatically. To complete the domain join or unjoin activities, the EventBridge targets the Systems Manager Automation runbook created from **cfn-create-ssm-automation-parameters-adjoin.template**.
+The CloudFormation template **cfn-deploy-ec2launchtemplate-asg-elb.template** allows customers to deploy Auto Scaling groups to build scalable architecture and leverage [launch and termination lifecycle hooks](https://docs.aws.amazon.com/autoscaling/ec2/userguide/lifecycle-hooks.html) to accomplish this.
+
+The components used in this environment are listed below.
+
+* An Auto Scaling group is associated with an Elastic Load Balancer (ELB)
+* An Amazon EC2 Launch Template is associated with the Auto Scaling group
+  *  Built with the latest Windows Server 2019 Base Amazon Machine Image (AMI)
+  *  Userdata configures IIS as a web server per EC2 instance
+* An Amazon EventBridge monitors events for Auto Scaling lifecycle changes
+  * Specifically, EventBridge reacts to launch and termination lifecycle hooks to domain join or unjoin, respectively, an EC2 instances in the Auto Scaling group to AD automatically
+* To complete the domain join or unjoin activities, the EventBridge targets the Systems Manager Automation runbook created from **cfn-create-ssm-automation-parameters-adjoin.template**
+
+NOTE: the Auto Scaling group is currently configured for manual scaling, i.e. users have to change the desired capacity and minimum capacity. This is done for demo purposes. However, automatic scaling through Amazon CloudWatch can be configured as needed.
