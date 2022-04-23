@@ -7,7 +7,8 @@ To deploy the runbook and parameters, download the AWS CloudFormation template f
 ## Creating a stack in CloudFormation
 ![Create a stack](images/create_ssm_automation_cfn_stack_01.png)
 
-## Example of stack details configured for an Automation runbook creation and parameters. NOTE: the password is hidden and created as a SecureString.
+## Example of stack details configured for an Automation runbook creation and parameters.
+The password is hidden and created as a SecureString parameter data, which is encrypted and decrypted using an AWS KMS key. Learn more by visiting [AWS documentation](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-parameter-store.html#what-is-a-parameter).
 ![Specificy stack details](images/create_ssm_automation_cfn_stack_02.png)
 
 ***
