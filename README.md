@@ -148,7 +148,7 @@ The components used in this environment are listed below.
   *  Built with the latest Windows Server 2019 Base Amazon Machine Image (AMI)
   *  Userdata configures IIS as a web server per EC2 instance
 * An Amazon EventBridge monitors events for Auto Scaling lifecycle changes
-  * Specifically, EventBridge reacts to launch and termination lifecycle hooks to domain join or unjoin, respectively, an EC2 instances in the Auto Scaling group to AD automatically
+  * Specifically, [EventBridge reacts to launch and termination lifecycle hooks](https://docs.aws.amazon.com/autoscaling/ec2/userguide/cloud-watch-events.html) to domain join or unjoin, respectively, an EC2 instances in the Auto Scaling group to AD automatically
 * To complete the domain join or unjoin activities, the EventBridge targets the Systems Manager Automation runbook created from [**cfn-create-ssm-automation-parameters-adjoin.template**](cfn-create-ssm-automation-parameters-adjoin.template)
 
 The Auto Scaling group is currently configured for manual scaling, i.e. an AWS user will have to change the desired capacity and minimum capacity. This is done for demo purposes and to demonstrate how the power of Systems Manager Automation when incorporated with event-driven services like Amazon EC2 Auto Scaling and Amazon EventBridge to build scalable architectures in AWS. Customers can use this as a building block for their AD environments hosted in AWS and build even more complex workflows where appropriate. Please note, automatic scaling through Amazon CloudWatch/EventBridge can be configured as needed in Auto Scaling as needed.
