@@ -198,8 +198,8 @@ Resources:
             description: Add the InstanceID to the AD Computers description.
             timeoutSeconds: 600
             isEnd: false
-            nextStep: createEC2NameTag
-          - name: createEC2NameTag
+            nextStep: joinADEC2Tag
+          - name: joinADEC2Tag
             action: 'aws:createTags'
             inputs:
               ResourceType: EC2
@@ -210,7 +210,7 @@ Resources:
                   Value: Joined
             timeoutSeconds: 60
             isEnd: true
-            description: Tag EC2 instance with random string. (Meetings Windows Server minimum requirements.)
+            description: Add the ADJoined EC2 tag to reflect joining to AD domain.
           - name: unjoinDomain
             action: 'aws:runCommand'
             inputs:
@@ -250,8 +250,8 @@ Resources:
             description: Execute PowerShell locally on EC2 instance to unjoin from the AD domain.
             timeoutSeconds: 600
             isEnd: false
-            nextStep: updateEC2Tag
-          - name: updateEC2Tag
+            nextStep: unjoinADEC2Tag
+          - name: unjoinADEC2Tag
             action: 'aws:createTags'
             inputs:
               ResourceType: EC2

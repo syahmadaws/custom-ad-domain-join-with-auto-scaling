@@ -140,8 +140,8 @@ inputs:
 description: Add the InstanceID to the AD Computers description.
 timeoutSeconds: 600
 isEnd: false
-nextStep: createEC2NameTag
-- name: createEC2NameTag
+nextStep: joinADEC2Tag
+- name: joinADEC2Tag
 action: 'aws:createTags'
 inputs:
     ResourceType: EC2
@@ -152,7 +152,7 @@ inputs:
         Value: Joined
 timeoutSeconds: 60
 isEnd: true
-description: Tag EC2 instance with random string. (Meetings Windows Server minimum requirements.)
+description: nextStep: Add the ADJoined EC2 tag to reflect joining to AD domain.
 - name: unjoinDomain
 action: 'aws:runCommand'
 inputs:
@@ -189,3 +189,19 @@ inputs:
             Write-Host "$env:COMPUTERNAME is not part of the Active Directory domain $domainName and already part of a Windows Workgroup."
         }
         exit 0
+    description: Execute PowerShell locally on EC2 instance to unjoin from the AD domain.
+    timeoutSeconds: 600
+    isEnd: false
+    nextStep: unjoinADEC2Tag
+    - name: unjoinADEC2Tag
+    action: 'aws:createTags'
+    inputs:
+        ResourceType: EC2
+        Tags:
+        - Key: ADJoined
+            Value: 'No'
+        ResourceIds:
+        - '{{ InstanceId }}'
+    description: Update the ADJoined EC2 tag to reflect removal from AD domain.
+    timeoutSeconds: 60
+    isEnd: true
