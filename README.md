@@ -18,7 +18,7 @@ The password is hidden and created as a SecureString parameter data, which is en
 # Parameter Store
 The Automation runbook requires parameters stored in Systems Manager Parameter Store to complete the domain join and unjoining activities. If you chose to deploy the environment using the CloudFormation stack, these parameters are created automatically. Otherwise, the parameters must be created manually. This includes the AD domain name (FQDN), AD username, AD password, and a targetOU. To learn more about Parameter Store, visit the [AWS documentation](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-parameter-store.html).
 
-Below are details of the parameters that are created by the CloudFormation stack or manually if you choose to forgo CloudFormation (NOTE: the parameter names and values are cAsE-SeNsItIvE). If you choose to forgo the CloudFormation template, the parameters can be created manually.
+Below are details of the parameters that are created by the CloudFormation stack or manually if you choose not to use CloudFormation (NOTE: the parameter names and values are cAsE-SeNsItIvE).
 
 ## AD domain name
 - **Name** : *domainName*
