@@ -1,10 +1,10 @@
 # Overview
-Deploy a custom AWS Systems Manager Automation runbook that automatically domain joins or unjoin from an Active Directory (AD) domain. This runbook can be used with on-premises AD or AWS Managed Microsoft AD and can be executed manually or automatically with services such as Amazon EventBridge or AWS Lambda. The runbook leverages parameters stored in AWS Systems Manager Parameter Store. In particular, 4 parameters are created that include the AD domain name, AD domain username, AD domain user's password, and a specific Organizational Unit (OU) in AD.
+Deploy a custom AWS Systems Manager Automation runbook that automatically domain joins or unjoin from an [Active Directory (AD) domain](https://docs.microsoft.com/en-us/windows-server/identity/ad-ds/get-started/virtual-dc/active-directory-domain-services-overview). This runbook can be used with on-premises AD, self-managed AD running on [Amazon Elastic Compute Cloud (Amazon EC2) Windows instances](https://aws.amazon.com/windows/products/ec2/), or [AWS Managed Microsoft AD](https://aws.amazon.com/directoryservice/) and can be executed manually or automatically with services such as [Amazon EventBridge](https://aws.amazon.com/eventbridge/) or [AWS Lambda](https://aws.amazon.com/lambda/). The runbook leverages parameters stored in AWS Systems Manager Parameter Store. In particular, 4 parameters are created that include the AD domain name, AD domain username, AD domain user's password, and a specific Organizational Unit (OU) in AD.
 
 # Deploy the Automation runbook and parameters
-To deploy the runbook and parameters, download and save the AWS CloudFormation template from Github, [**cfn-create-ssm-automation-parameters-adjoin.template**](cfn-create-ssm-automation-parameters-adjoin.template), and save it locally to your computer to create a new CloudFormation stack. Creating a new stack will simplify the deployment of the Automation runbook and create the appropriate parameters to perform the AD join/unjoin activities. To learn more about CloudFormation stack creation, visit the [AWS documentation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/GettingStarted.Walkthrough.html#GettingStarted.Walkthrough.createstack).
+To deploy the runbook and parameters automatically, download and save the AWS CloudFormation template from Github, [**cfn-create-ssm-automation-parameters-adjoin.template**](templates/cloudformation/cfn-create-ssm-automation-parameters-adjoin.template), and save it locally to your computer to create a new CloudFormation stack. Creating a new stack will simplify the deployment of the Automation runbook and create the appropriate parameters to perform the AD join/unjoin activities automatically. To learn more about CloudFormation stack creation, visit the [AWS documentation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/GettingStarted.Walkthrough.html#GettingStarted.Walkthrough.createstack).
 
-To create the Automation runbook manually, you can download the template from this Github repo, [here](ssm-automation-domainjoinunjoin.template), and create a custom Automation runbook. Visit the AWS documentation to learn [how to create runbooks with the Document Builder](https://docs.aws.amazon.com/systems-manager/latest/userguide/automation-document-builder.html) or [how to create runbooks with the Editor](https://docs.aws.amazon.com/systems-manager/latest/userguide/automation-document-editor.html)
+To create the Automation runbook manually, you can download the template separately from [here](templates/systemsmanager/ssm-automation-domainjoinunjoin.yaml) and create a custom Automation runbook manually. Visit the AWS documentation to learn [how to create runbooks with the Document Builder](https://docs.aws.amazon.com/systems-manager/latest/userguide/automation-document-builder.html) or [how to create runbooks with the Editor](https://docs.aws.amazon.com/systems-manager/latest/userguide/automation-document-editor.html). 
 
 ## Creating a stack in CloudFormation
 ![Create a stack](images/create_ssm_automation_cfn_stack_01.png)
@@ -16,9 +16,9 @@ The password is hidden and created as a SecureString parameter data, which is en
 ***
 
 # Parameter Store
-The Automation runbook requires parameters stored in Systems Manager Parameter Store to complete the domain join and unjoining activities. This includes the AD domain name (FQDN), AD username, AD password, and a targetOU. To learn more about Parameter Store, visit the [AWS documentation](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-parameter-store.html).
+The Automation runbook requires parameters stored in Systems Manager Parameter Store to complete the domain join and unjoining activities. If you chose to deploy the environment using the CloudFormation stack, these parameters are created automatically. Otherwise, the parameters must be created manually. This includes the AD domain name (FQDN), AD username, AD password, and a targetOU. To learn more about Parameter Store, visit the [AWS documentation](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-parameter-store.html).
 
-Below are the parameters that are created by the CloudFormation template (NOTE: the parameter names and values are cAsE-SeNsItIvE). If you choose to forgo the CloudFormation template, the parameters can be created manually.
+Below are details of the parameters that are created by the CloudFormation stack or manually if you choose to forgo CloudFormation (NOTE: the parameter names and values are cAsE-SeNsItIvE). If you choose to forgo the CloudFormation template, the parameters can be created manually.
 
 ## AD domain name
 - **Name** : *domainName*
@@ -50,7 +50,7 @@ Below are the parameters that are created by the CloudFormation template (NOTE: 
 
 ## PowerShell
 
-Within the Systems Manager Automation runbook there are two steps where either domain join or domain unjoin activities are executed. These steps call a [Systems Manage Command document (SSM Document)](https://docs.aws.amazon.com/systems-manager/latest/userguide/sysman-ssm-docs.html) to execute this code. Specifically, the SSM Command document that is executed is **AWS-RunPowerShellScript**, which simply executes any code that is passed as parameter. Below are the PowerShell code blocks used to perform domain join, AD computer object updates, and domain unjoin activities, respectively.
+Within the Systems Manager Automation runbook there are two steps where either domain join or domain unjoin activities are executed. These steps call a [Systems Manage Command document (SSM Document)](https://docs.aws.amazon.com/systems-manager/latest/userguide/sysman-ssm-docs.html) to execute this code. Specifically, the SSM Command document that is executed is **AWS-RunPowerShellScript**, which simply executes any code that is passed as an input parameter. Below are the PowerShell code blocks used to perform domain join, AD computer object updates, and domain unjoin activities, respectively.
 
 ### Domain join
 ```powershell
@@ -65,42 +65,8 @@ $domainCredential = New-Object System.Management.Automation.PSCredential($domain
 if ((Get-WmiObject -Class Win32_ComputerSystem).PartOfDomain -eq $false) {
     Add-Computer -ComputerName $env:COMPUTERNAME -DomainName $domainName -Credential $domainCredential -OUPath $targetOU -ErrorAction Stop -Restart:$false
     Write-Host "Joining $env:COMPUTERNAME to Active Directory domain: $domainName.`nMoving $env:COMPUTERNAME to the following OU: $targetOU.`n"
-    Restart-Computer -Force
-    exit 3010
+    exit 0
 }
-```
-
-### AD computer object description update
-Notice the use of `$instanceId = '{{InstanceId}}'` in the code. PowerShell is creating a variable, `$instanceId`, that is used later in the script as part of the AD computer object's description, helping to identify the underlying EC2 instance Id. Rather than calling the instance Id through traditional means, for example the [Get-EC2InstanceMetadata Cmdlet](https://docs.aws.amazon.com/powershell/latest/reference/items/Get-EC2InstanceMetadata.html), we can pass parameters from Automation runbooks, in this case `'{{InstanceId}}'` which allows a user to define the EC2 instance Id to be executed manually or automatically by Systems Manager, and pass them as into various steps of the runbook. To learn more about input parameters in runbooks, visit [AWS documentation](https://docs.aws.amazon.com/systems-manager/latest/userguide/populating-input-parameters.html).
-```powershell
-# RSAT AD Tools check.
-if (-not (Get-WindowsFeature -Name RSAT-AD-Tools).Installed) {
-    Write-Host "Installing RSAT AD Tools to modify the AD Computer description.`n"
-    Add-WindowsFeature -Name RSAT-AD-Tools | Out-Null
-    Write-Host "Installation of RSAT AD Tools completed.`n"
-}
-
-$identity = $env:COMPUTERNAME
-$domainName = (Get-SSMParameterValue -Name "domainName").Parameters[0].Value
-$domainJoinUserName = (Get-SSMParameterValue -Name "domainJoinUserName").Parameters[0].Value
-$domainJoinPassword = (Get-SSMParameterValue -Name "domainJoinPassword" -WithDecryption:$true).Parameters[0].Value | ConvertTo-SecureString -AsPlainText -Force
-$domainCredential = New-Object System.Management.Automation.PSCredential($domainJoinUserName,$domainJoinPassword)
-
-Write-Host "$identity has successfully joined $domainName.`n"
-
-# Update AD Computer description.
-$instanceId = '{{InstanceId}}'
-Set-ADComputer -Identity $identity -Description "$instanceId" -Credential $domainCredential
-
-# Remove RSAT AD Tools from the server.
-Write-Host "Removing RSAT AD Tools from $identity."
-Remove-WindowsFeature -Name RSAT-AD-Tools | Out-Null
-Write-Host "Uninstallation of RSAT AD Tools completed.`n"
-
-# Restart the computer one last time to complete the entire process.
-Write-Host "Restarting the server one last time."
-Restart-Computer -Force
-exit 0
 ```
 
 ### Domain unjoin
@@ -141,7 +107,7 @@ NOTE: this code can be customized as needed. Also, AD credentials are currently 
 ***
 
 # Scalability example
-The CloudFormation template [**cfn-deploy-ec2launchtemplate-asg-elb.template**](cfn-deploy-ec2launchtemplate-asg-elb.template) allows customers to deploy Auto Scaling groups to build scalable architecture and leverage [launch and termination lifecycle hooks](https://docs.aws.amazon.com/autoscaling/ec2/userguide/lifecycle-hooks.html) to accomplish this.
+The CloudFormation template [**cfn-deploy-ec2launchtemplate-asg-elb.template**](templates/cloudformation/cfn-deploy-ec2launchtemplate-asg-elb.template) allows customers to deploy Auto Scaling groups to build scalable architecture and leverage [launch and termination lifecycle hooks](https://docs.aws.amazon.com/autoscaling/ec2/userguide/lifecycle-hooks.html) to accomplish this.
 
 The components used in this environment are listed below.
 
@@ -151,9 +117,9 @@ The components used in this environment are listed below.
   *  Userdata configures IIS as a web server per EC2 instance
 * An [Amazon EventBridge](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-what-is.html) monitors events for Auto Scaling lifecycle changes
   * Specifically, [EventBridge reacts to launch and termination lifecycle hooks](https://docs.aws.amazon.com/autoscaling/ec2/userguide/cloud-watch-events.html) to domain join or unjoin, respectively, an EC2 instances in the Auto Scaling group to AD automatically
-* To complete the domain join or unjoin activities, the EventBridge targets the Systems Manager Automation runbook created from [**cfn-create-ssm-automation-parameters-adjoin.template**](cfn-create-ssm-automation-parameters-adjoin.template)
+* To complete the domain join or unjoin activities, the EventBridge targets the Systems Manager Automation runbook created from [**ssm-automation-domainjoinunjoin-with-autoscaling-lifecycle.yaml**](templates/systemsmanager/ssm-automation-domainjoinunjoin-with-autoscaling-lifecycle.yaml)
 
-The Auto Scaling group is currently configured for manual scaling, i.e. an AWS user will have to change the desired capacity and minimum capacity. This is done for demo purposes and to demonstrate how the power of Systems Manager Automation when incorporated with event-driven services like Amazon EC2 Auto Scaling and Amazon EventBridge to build scalable architectures in AWS. Customers can use this as a building block for their AD environments hosted in AWS and build even more complex workflows where appropriate. Please note, automatic scaling through Amazon CloudWatch/EventBridge can be configured as needed in Auto Scaling as needed.
+The Auto Scaling group is currently configured for manual scaling, i.e. an AWS admin will have to change the desired capacity and minimum capacity. This is done for demo purposes and to demonstrate how the power of Systems Manager Automation when incorporated with event-driven services like Amazon EC2 Auto Scaling and Amazon EventBridge to build scalable architectures in AWS. Customers can use this as a building block for their AD environments hosted in AWS and build even more complex workflows where appropriate. Please note, automatic scaling through Amazon CloudWatch/EventBridge can be configured as needed in Auto Scaling as needed.
 
 ## Example of stack details configured to create an Amazon EC2 Launch Template, Elastic Load Balancer, Auto Scaling group, and the name of the Automation runbook created earlier.
 ![Specificy stack details](images/create_asg_elb_ec2lt_cfn_stack_01.png)
