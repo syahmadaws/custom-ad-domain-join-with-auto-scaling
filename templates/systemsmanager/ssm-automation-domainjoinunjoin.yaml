@@ -1,3 +1,4 @@
+schemaVersion: '0.3'
 description: |-
   This document will join or unjoin an EC2 Windows instance to an Active Directory domain.
 
@@ -32,7 +33,6 @@ description: |-
   - **Type** : String
   - **Data type** : text
   - **Value** : *OU=Servers,OU=CORP,dc=corp,dc=example,dc=com*
-schemaVersion: '0.3'
 assumeRole: '{{AutomationAssumeRole}}'
 parameters:
   AutomationAssumeRole:
