@@ -55,7 +55,7 @@ Resources:
       DocumentType: Automation
       DocumentFormat: YAML
       Name: !Ref 'SSMAutomationDocumentName'
-      Content:
+      Content: |-
         description: |-
         This document will join or unjoin an EC2 Windows instance to an Active Directory domain.
 
