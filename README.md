@@ -63,8 +63,16 @@ $domainCredential = New-Object System.Management.Automation.PSCredential($domain
 
 # Domain join check. If the server is not part of a domain (in a Windows Workgroup), then the server will be joined to the domain.
 if ((Get-WmiObject -Class Win32_ComputerSystem).PartOfDomain -eq $false) {
-    Add-Computer -ComputerName $env:COMPUTERNAME -DomainName $domainName -Credential $domainCredential -OUPath $targetOU -ErrorAction Stop -Restart:$false
-    Write-Host "Joining $env:COMPUTERNAME to Active Directory domain: $domainName.`nMoving $env:COMPUTERNAME to the following OU: $targetOU.`n"
+    $Error.Clear()
+    try {
+      Write-Host "Attempting to join $env:COMPUTERNAME to Active Directory domain: $domainName and moving $env:COMPUTERNAME to the following OU: $targetOU.`n"
+      Add-Computer -ComputerName $env:COMPUTERNAME -DomainName $domainName -Credential $domainCredential -OUPath $targetOU -ErrorAction Stop -Restart:$false
+    } catch {
+      Write-Host $PSItem.Exception.Message
+      exit 1
+    }
+} else {
+    Write-Host "$env:COMPUTERNAME is alerady part of the Active Directory domain $domainName."
     exit 0
 }
 ```
@@ -88,22 +96,26 @@ $distinguishedName = $getADComputer.DistinguishedName
 
 # Domain join check
 if ((Get-WmiObject -Class Win32_ComputerSystem).PartOfDomain -eq $true) {
+  $Error.Clear()
+  try {
     Write-Host "Unjoining $env:COMPUTERNAME from Active Directory domain: $domainName.`n"
-
-    # Unjoin from AD and remove the AD computer object.'
+    # Unjoin from AD and remove the AD computer object.
+    Write-Host "Attempting to remove $env:COMPUTERNAME from the $domainName domain and in a Windows Workgroup."
     Remove-Computer -ComputerName $env:COMPUTERNAME -UnjoinDomaincredential $domainCredential -Verbose -Force -Restart:$false
     Remove-ADComputer -Credential $domainCredential -Identity $distinguishedName -Server $domainName -Confirm:$False -Verbose
-
-    Write-Host "$env:COMPUTERNAME has unjoined from the $domainName domain and in a Windows Workgroup."
+  } catch {
+    Write-Host $PSItem.Exception.Message
+    exit 1
+  }
 } else {
     Write-Host "$env:COMPUTERNAME is not part of the Active Directory domain $domainName and already part of a Windows Workgroup."
+    exit 0
 }
-exit 0
 ```
 
-With the exception of the parameters from the Systems Manager Parameter Store, the PowerShell script should be familiar to any admin who leverages PowerShell AD cmdlets to execute domain join activities. There are **exit codes** specific to Systems Manager, aiding in activities where restarts are required and may require continuation of the PowerShell script. Learn more about exit codes by visiting [AWS documentation](https://docs.aws.amazon.com/systems-manager/latest/userguide/command-exit-codes.html).
+With the exception of the parameters from the Systems Manager Parameter Store, the PowerShell script should be familiar to any admin who leverages PowerShell AD cmdlets to execute domain join activities. There are **exit codes** specific to Systems Manager that allow the Automation runbook to identify failures during the domain join or unjoin process. Without the exit codes, a failed domain join, for example, may still be marked as **Success** despite not having been added to an AD domain. Learn more about exit codes by visiting [AWS documentation](https://docs.aws.amazon.com/systems-manager/latest/userguide/command-exit-codes.html).
 
-NOTE: this code can be customized as needed. Also, AD credentials are currently stored as parameters in Systems Manager Parameter Store. However, customers can choose to store these credentials as secrets in AWS Secrets Manager. To learn more about Secrest Manager, visit the [AWS documentation](https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html)
+NOTE: the PowerShell can be customized as needed. Also, AD credentials are currently stored as parameters in Systems Manager Parameter Store. However, customers can choose to store these credentials as secrets in AWS Secrets Manager. To learn more about Secrest Manager, visit the [AWS documentation](https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html)
 ***
 
 # Scalability example
@@ -117,7 +129,7 @@ The components used in this environment are listed below.
   *  Userdata configures IIS as a web server per EC2 instance
 * An [Amazon EventBridge](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-what-is.html) monitors events for Auto Scaling lifecycle changes
   * Specifically, [EventBridge reacts to launch and termination lifecycle hooks](https://docs.aws.amazon.com/autoscaling/ec2/userguide/cloud-watch-events.html) to domain join or unjoin, respectively, an EC2 instances in the Auto Scaling group to AD automatically
-* To complete the domain join or unjoin activities, the EventBridge targets the Systems Manager Automation runbook created from [**ssm-automation-domainjoinunjoin-with-autoscaling-lifecycle.yaml**](templates/systemsmanager/ssm-automation-domainjoinunjoin-with-autoscaling-lifecycle.yaml)
+* To complete the domain join or unjoin activities, the EventBridge targets the Systems Manager Automation runbook created from [**ssm-automation-domainjoinunjoin.yaml**](templates/systemsmanager/ssm-automation-domainjoinunjoin.yaml)
 
 The Auto Scaling group is currently configured for manual scaling, i.e. an AWS admin will have to change the desired capacity and minimum capacity. This is done for demo purposes and to demonstrate how the power of Systems Manager Automation when incorporated with event-driven services like Amazon EC2 Auto Scaling and Amazon EventBridge to build scalable architectures in AWS. Customers can use this as a building block for their AD environments hosted in AWS and build even more complex workflows where appropriate. Please note, automatic scaling through Amazon CloudWatch/EventBridge can be configured as needed in Auto Scaling as needed.
 

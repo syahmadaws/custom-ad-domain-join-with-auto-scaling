@@ -108,6 +108,10 @@ Resources:
           default: ''
           description: '(Required) Select which AD domain activity to perform, join an AD domain or unjoin an AD domain.'
           type: String
+        LifecycleTransition:
+          default: ''
+          description: '(Optional) Auto Scaling Group Lifecyle Transition, launching or terminating, to determine domain join or unjoin activities. NOTE, Amazon EventBridge leverages this parameter.'
+          type: String
       mainSteps:
         - name: assertInstanceIsWindows
           action: 'aws:assertAwsResourceProperty'
@@ -122,21 +126,31 @@ Resources:
               - '{{InstanceId}}'
           timeoutSeconds: 10
           nextStep: chooseDomainJoinActivity
-        - inputs:
-            Choices:
-              - StringEquals: Join
-                Variable: '{{DomainJoinActivity}}'
-                NextStep: joinDomain
-              - StringEquals: Unjoin
-                Variable: '{{DomainJoinActivity}}'
-                NextStep: unjoinDomain
-          name: chooseDomainJoinActivity
+        - name: chooseDomainJoinActivity
           action: 'aws:branch'
           timeoutSeconds: 60
           description: 'Determine the appropriate AD domain activity, join or unjoin.'
+          inputs:
+            Choices:
+              - Or:
+                  - StringEquals: 'autoscaling:EC2_INSTANCE_LAUNCHING'
+                    Variable: '{{LifecycleTransition}}'
+                  - StringEquals: Join
+                    Variable: '{{DomainJoinActivity}}'
+                NextStep: joinDomain
+              - Or:
+                  - StringEquals: 'autoscaling:EC2_INSTANCE_TERMINATING'
+                    Variable: '{{LifecycleTransition}}'
+                  - StringEquals: Unjoin
+                    Variable: '{{DomainJoinActivity}}'
+                NextStep: unjoinDomain
+          name: chooseDomainJoinActivity
           isCritical: 'true'
           isEnd: false
-        - inputs:
+        - name: joinDomain
+          action: 'aws:runCommand'
+          description: Execute PowerShell locally on EC2 instance to join the AD domain.
+          inputs:
             Parameters:
               commands: |-
                 # Define AD domain specific variables. AWS Systems Manager Parameter Store is where these parameters reside.
@@ -148,41 +162,41 @@ Resources:
 
                 # Domain join check. If the server is not part of a domain (in a Windows Workgroup), then the server will be joined to the domain.
                 if ((Get-WmiObject -Class Win32_ComputerSystem).PartOfDomain -eq $false) {
-                    Add-Computer -ComputerName $env:COMPUTERNAME -DomainName $domainName -Credential $domainCredential -OUPath $targetOU -ErrorAction Stop -Restart:$false
-                    Write-Host "Joining $env:COMPUTERNAME to Active Directory domain: $domainName.`nMoving $env:COMPUTERNAME to the following OU: $targetOU.`n"
+                    $Error.Clear()
+                    try {
+                      Write-Host "Attempting to join $env:COMPUTERNAME to Active Directory domain: $domainName and moving $env:COMPUTERNAME to the following OU: $targetOU.`n"
+                      Add-Computer -ComputerName $env:COMPUTERNAME -DomainName $domainName -Credential $domainCredential -OUPath $targetOU -ErrorAction Stop -Restart:$false
+                    } catch {
+                      Write-Host $PSItem.Exception.Message
+                      exit 1
+                    }
+                } else {
+                    Write-Host "$env:COMPUTERNAME is alerady part of the Active Directory domain $domainName."
                     exit 0
                 }
             InstanceIds:
               - '{{ InstanceId }}'
             DocumentName: AWS-RunPowerShellScript
-          name: joinDomain
-          action: 'aws:runCommand'
-          description: Execute PowerShell locally on EC2 instance to join the AD domain.
           timeoutSeconds: 600
-          nextStep: joinReboot
-          isEnd: false
-        - name: joinReboot
-          action: 'aws:executeAwsApi'
-          inputs:
-            Service: ec2
-            Api: RebootInstances
-            InstanceIds:
-              - '{{InstanceId}}'
           nextStep: joinADEC2Tag
-          timeoutSeconds: 30
-        - inputs:
+          isEnd: false
+          onFailure: 'step:failADEC2Tag'
+        - name: joinADEC2Tag
+          action: 'aws:createTags'
+          description: Add the ADJoined EC2 tag to reflect joining to AD domain.
+          inputs:
             ResourceIds:
               - '{{InstanceId}}'
             ResourceType: EC2
             Tags:
               - Value: Joined
                 Key: ADJoined
-          name: joinADEC2Tag
-          action: 'aws:createTags'
-          timeoutSeconds: 60
-          description: Add the ADJoined EC2 tag to reflect joining to AD domain.
-          isEnd: true
-        - inputs:
+          isEnd: false
+          nextStep: rebootServer
+        - name: unjoinDomain
+          action: 'aws:runCommand'
+          description: Execute PowerShell locally on EC2 instance to unjoin from the AD domain.
+          inputs:
             Parameters:
               commands: |-
                 # Define AD domain specific variables. AWS Systems Manager Parameter Store is where these parameters reside.
@@ -202,40 +216,55 @@ Resources:
 
                 # Domain join check
                 if ((Get-WmiObject -Class Win32_ComputerSystem).PartOfDomain -eq $true) {
+                  $Error.Clear()
+                  try {
                     Write-Host "Unjoining $env:COMPUTERNAME from Active Directory domain: $domainName.`n"
-
-                    # Unjoin from AD and remove the AD computer object.'
+                    # Unjoin from AD and remove the AD computer object.
+                    Write-Host "Attempting to remove $env:COMPUTERNAME from the $domainName domain and in a Windows Workgroup."
                     Remove-Computer -ComputerName $env:COMPUTERNAME -UnjoinDomaincredential $domainCredential -Verbose -Force -Restart:$false
                     Remove-ADComputer -Credential $domainCredential -Identity $distinguishedName -Server $domainName -Confirm:$False -Verbose
-
-                    Write-Host "$env:COMPUTERNAME has unjoined from the $domainName domain and in a Windows Workgroup."
+                  } catch {
+                    Write-Host $PSItem.Exception.Message
+                    exit 1
+                  }
                 } else {
                     Write-Host "$env:COMPUTERNAME is not part of the Active Directory domain $domainName and already part of a Windows Workgroup."
+                    exit 0
                 }
-                exit 0
             InstanceIds:
               - '{{ InstanceId }}'
             DocumentName: AWS-RunPowerShellScript
-          name: unjoinDomain
-          action: 'aws:runCommand'
-          description: Execute PowerShell locally on EC2 instance to unjoin from the AD domain.
           timeoutSeconds: 600
           nextStep: unjoinADEC2Tag
           isEnd: false
-        - inputs:
+          onFailure: step:failADEC2Tag
+        - name: unjoinADEC2Tag
+          action: 'aws:createTags'
+          description: Update the ADJoined EC2 tag to reflect removal from AD domain.
+          inputs:
             ResourceIds:
               - '{{ InstanceId }}'
             ResourceType: EC2
             Tags:
               - Value: 'No'
                 Key: ADJoined
-          name: unjoinADEC2Tag
-          action: 'aws:createTags'
-          description: Update the ADJoined EC2 tag to reflect removal from AD domain.
           timeoutSeconds: 30
           isEnd: false
-          nextStep: unjoinReboot
-        - name: unjoinReboot
+          nextStep: rebootServer
+        - name: failADEC2Tag
+          action: 'aws:createTags'
+          description: Update the ADJoined EC2 tag to reflect a failure in the AD domain join/unjoin process.
+          inputs:
+            ResourceIds:
+              - '{{ InstanceId }}'
+            ResourceType: EC2
+            Tags:
+              - Value: Failed
+                Key: ADJoined
+          timeoutSeconds: 30
+          isEnd: false
+          nextStep: stopServer
+        - name: rebootServer
           action: 'aws:executeAwsApi'
           inputs:
             Service: ec2
@@ -243,22 +272,14 @@ Resources:
             InstanceIds:
               - '{{InstanceId}}'
           isEnd: true
-            description: Execute PowerShell locally on EC2 instance to unjoin from the AD domain.
-            timeoutSeconds: 600
-            isEnd: false
-            nextStep: unjoinADEC2Tag
-          - name: unjoinADEC2Tag
-            action: 'aws:createTags'
-            inputs:
-              ResourceType: EC2
-              Tags:
-                - Key: ADJoined
-                  Value: 'No'
-              ResourceIds:
-                - '{{ InstanceId }}'
-            description: Update the ADJoined EC2 tag to reflect removal from AD domain.
-            timeoutSeconds: 60
-            isEnd: true
+        - name: stopServer
+          action: 'aws:executeAwsApi'
+          inputs:
+            Service: ec2
+            Api: StopInstances
+            InstanceIds:
+              - '{{InstanceId}}'
+          isEnd: true
   SSMStringADDomainParam:
     Type: AWS::SSM::Parameter
     Properties:
