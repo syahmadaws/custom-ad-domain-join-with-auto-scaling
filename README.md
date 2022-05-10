@@ -5,15 +5,15 @@ Deploy a custom AWS Systems Manager Automation runbook that automatically domain
 There are currently 9 steps in total in the Automation workflow. Below are descriptions of the key steps and how they factor into the AD domain join/unjoin activities.
 1. **assertInstanceIsWindows** - The runbook first checks if the EC2 instance is running Windows and will only continue if the platform is Windows.
 2. **chooseDomainJoinActivity** - This is the crucial activity, where a user selects which activity they want to execute automatically: join an AD domain or unjoin from an AD domain.
-  - Determined from the **DomainJoinActivity** parameter.
-  - If the domain join/unjoin are scaled from Auto Scaling, the activities are passed from the **LifeCycleTransition** parameter.
-    - **autoscaling:EC2_INSTANCE_LAUNCHING** triggers a join.
-    - **autoscaling:EC2_INSTANCE_TERMINATING** triggers an unjoin.
+   - Determined from the **DomainJoinActivity** parameter.
+   - If the domain join/unjoin are scaled from Auto Scaling, the activities are passed from the **LifeCycleTransition** parameter.
+     - **autoscaling:EC2_INSTANCE_LAUNCHING** triggers a join.
+     - **autoscaling:EC2_INSTANCE_TERMINATING** triggers an unjoin.
 3. **joinDomain** & **unjoinADEC2Tag** - PowerShell to domain join or unjoin are  on the EC2 instances locally, respectively. For either a successful domain join or unjoin, the instance is tagged and restarted.
-  - The tagging steps are **joinADEC2Tag** and **unjoinADEC2Tag**.
-  - The PowerShell is wrapped in ```try``` and ```catch``` blocks. To learn more, visit [about_Try_Catch_Finally](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_try_catch_finally?view=powershell-7.2).
-  - If either a domain join/unjoin fails, a **Failed** status is returned, the EC2 instance is tagged to reflect the failure (**failADEC2Tag**), and the EC2 instance is stopped.
-  > The failures from the PowerShell are outputted and displayed in the Systems Manager Automation executions console. Users can troubleshoot the domain join/unjoin failures based on these common errors. Further enhancements can be made by additionally outputting the failures to [Amazon CloudWatch Logs](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/WhatIsCloudWatchLogs.html) in custom [log groups created by Run Command](https://docs.aws.amazon.com/systems-manager/latest/userguide/sysman-rc-setting-up-cwlogs.html). To learn more about log groups, visit the [AWS documentation](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/Working-with-log-groups-and-streams.html).
+   - The tagging steps are **joinADEC2Tag** and **unjoinADEC2Tag**.
+   - The PowerShell is wrapped in ```try``` and ```catch``` blocks. To learn more, visit [about_Try_Catch_Finally](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_try_catch_finally?view=powershell-7.2).
+   - If either a domain join/unjoin fails, a **Failed** status is returned, the EC2 instance is tagged to reflect the failure (**failADEC2Tag**), and the EC2 instance is stopped.
+   > The failures from the PowerShell are outputted and displayed in the Systems Manager Automation executions console. Users can troubleshoot the domain join/unjoin failures based on these common errors. Further enhancements can be made by additionally outputting the failures to [Amazon CloudWatch Logs](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/WhatIsCloudWatchLogs.html) in custom [log groups created by Run Command](https://docs.aws.amazon.com/systems-manager/latest/userguide/sysman-rc-setting-up-cwlogs.html). To learn more about log groups, visit the [AWS documentation](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/Working-with-log-groups-and-streams.html).
 
 # Deploy the Automation runbook and parameters
 To deploy the runbook and parameters automatically, download and save the AWS CloudFormation template from Github, [**cfn-create-ssm-automation-parameters-adjoin.template**](templates/cloudformation/cfn-create-ssm-automation-parameters-adjoin.template), and save it locally to your computer to create a new CloudFormation stack. Creating a new stack will simplify the deployment of the Automation runbook and create the appropriate parameters to perform the AD join/unjoin activities automatically. To learn more about CloudFormation stack creation, visit the [AWS documentation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/GettingStarted.Walkthrough.html#GettingStarted.Walkthrough.createstack).
