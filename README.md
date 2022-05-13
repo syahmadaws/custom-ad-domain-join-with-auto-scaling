@@ -69,61 +69,64 @@ Within the Systems Manager Automation runbook there are two steps where either d
 ### Domain join
 ```powershell
 # Define AD domain specific variables. AWS Systems Manager Parameter Store is where these parameters reside.
-$targetOU = (Get-SSMParameterValue -Name "defaultTargetOU").Parameters[0].Value
-$domainName = (Get-SSMParameterValue -Name "domainName").Parameters[0].Value
-$domainJoinUserName = (Get-SSMParameterValue -Name "domainJoinUserName").Parameters[0].Value
-$domainJoinPassword = (Get-SSMParameterValue -Name "domainJoinPassword" -WithDecryption:$true).Parameters[0].Value | ConvertTo-SecureString -AsPlainText -Force
-$domainCredential = New-Object System.Management.Automation.PSCredential($domainJoinUserName,$domainJoinPassword)
-
-# Domain join check. If the server is not part of a domain (in a Windows Workgroup), then the server will be joined to the domain.
-if ((Get-WmiObject -Class Win32_ComputerSystem).PartOfDomain -eq $false) {
-    $Error.Clear()
-    try {
-      Write-Host "Attempting to join $env:COMPUTERNAME to Active Directory domain: $domainName and moving $env:COMPUTERNAME to the following OU: $targetOU.`n"
-      Add-Computer -ComputerName $env:COMPUTERNAME -DomainName $domainName -Credential $domainCredential -OUPath $targetOU -ErrorAction Stop -Restart:$false
-    } catch {
-      Write-Host $PSItem.Exception.Message
-      exit 1
+If ((Get-CimInstance -ClassName 'Win32_ComputerSystem' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty 'PartOfDomain') -eq $false) {
+    Try {
+        $targetOU = (Get-SSMParameterValue -Name 'defaultTargetOU' -ErrorAction Stop).Parameters[0].Value
+        $domainName = (Get-SSMParameterValue -Name 'domainName' -ErrorAction Stop).Parameters[0].Value
+        $domainJoinUserName = (Get-SSMParameterValue -Name 'domainJoinUserName' -ErrorAction Stop).Parameters[0].Value
+        $domainJoinPassword = (Get-SSMParameterValue -Name 'domainJoinPassword' -WithDecryption:$true -ErrorAction Stop).Parameters[0].Value | ConvertTo-SecureString -AsPlainText -Force
+    } Catch [System.Exception] {
+        Write-Output " Failed to get SSM Parameter(s) $_"
     }
-} else {
-    Write-Host "$env:COMPUTERNAME is alerady part of the Active Directory domain $domainName."
-    exit 0
+    $domainCredential = New-Object System.Management.Automation.PSCredential($domainJoinUserName, $domainJoinPassword)
+
+    Try {
+        Write-Output "Attempting to join $env:COMPUTERNAME to Active Directory domain: $domainName and moving $env:COMPUTERNAME to the following OU: $targetOU."
+        Add-Computer -ComputerName $env:COMPUTERNAME -DomainName $domainName -Credential $domainCredential -OUPath $targetOU -Restart:$false -ErrorAction Stop 
+    } Catch [System.Exception] {
+        Write-Output "Failed to add computer to the domain $_"
+        Exit 1
+    }
+} Else {
+    Write-Output "$env:COMPUTERNAME is already part of the Active Directory domain $domainName."
+    Exit 0
 }
 ```
 
 ### Domain unjoin
 ```powershell
 # Define AD domain specific variables. AWS Systems Manager Parameter Store is where these parameters reside.
-$domainName = (Get-SSMParameterValue -Name domainName).Parameters[0].Value
-$domainJoinUserName = (Get-SSMParameterValue -Name "domainJoinUserName").Parameters[0].Value
-$domainJoinPassword = (Get-SSMParameterValue -Name "domainJoinPassword" -WithDecryption:$true).Parameters[0].Value | ConvertTo-SecureString -AsPlainText -Force
-$domainCredential = New-Object System.Management.Automation.PSCredential($domainJoinUserName,$domainJoinPassword)
+If ((Get-CimInstance -ClassName 'Win32_ComputerSystem' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty 'PartOfDomain') -eq $true) {
+    Try {
+        $domainName = (Get-SSMParameterValue -Name 'domainName' -ErrorAction Stop).Parameters[0].Value
+        $domainJoinUserName = (Get-SSMParameterValue -Name 'domainJoinUserName' -ErrorAction Stop).Parameters[0].Value
+        $domainJoinPassword = (Get-SSMParameterValue -Name 'domainJoinPassword' -WithDecryption:$true -ErrorAction Stop).Parameters[0].Value | ConvertTo-SecureString -AsPlainText -Force
+    } Catch [System.Exception] {
+        Write-Output "Failed to get SSM Parameter(s) $_"
+    }
 
-if (-not (Get-WindowsFeature -Name RSAT-AD-Tools).Installed) {
-    Write-Host "Installing RSAT AD Tools to allow domain joining.`n"
-    Add-WindowsFeature -Name RSAT-AD-Tools | Out-Null
-    Write-Host "Installation of RSAT AD Tools completed.`n"
-}
+    $domainCredential = New-Object System.Management.Automation.PSCredential($domainJoinUserName, $domainJoinPassword)
 
-$getADComputer = (Get-ADComputer -Identity $env:COMPUTERNAME -Credential $domainCredential)
-$distinguishedName = $getADComputer.DistinguishedName
+    If (-not (Get-WindowsFeature -Name 'RSAT-AD-Tools' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty 'Installed')) {
+        Write-Output 'Installing RSAT AD Tools to allow domain joining'
+        Try {
+            $Null = Add-WindowsFeature -Name 'RSAT-AD-Tools '-ErrorAction Stop
+        } Catch [System.Exception] {
+            Write-Output "Failed to install RSAT AD Tools $_"
+            Exit 1
+        }    
+    }
 
-# Domain join check
-if ((Get-WmiObject -Class Win32_ComputerSystem).PartOfDomain -eq $true) {
-  $Error.Clear()
-  try {
-    Write-Host "Unjoining $env:COMPUTERNAME from Active Directory domain: $domainName.`n"
-    # Unjoin from AD and remove the AD computer object.
-    Write-Host "Attempting to remove $env:COMPUTERNAME from the $domainName domain and in a Windows Workgroup."
-    Remove-Computer -ComputerName $env:COMPUTERNAME -UnjoinDomaincredential $domainCredential -Verbose -Force -Restart:$false
-    Remove-ADComputer -Credential $domainCredential -Identity $distinguishedName -Server $domainName -Confirm:$False -Verbose
-  } catch {
-    Write-Host $PSItem.Exception.Message
-    exit 1
-  }
-} else {
-    Write-Host "$env:COMPUTERNAME is not part of the Active Directory domain $domainName and already part of a Windows Workgroup."
-    exit 0
+    Try {
+        Remove-Computer -ComputerName $env:COMPUTERNAME -UnjoinDomainCredential $domainCredential -Verbose -Force -Restart:$false -ErrorAction Stop
+        Remove-ADComputer -Credential $domainCredential -Identity $distinguishedName -Server $domainName -Confirm:$False -Verbose -ErrorAction Stop
+    } Catch [System.Exception] {
+        Write-Output "Failed to remove $env:COMPUTERNAME from the $domainName domain and in a Windows Workgroup. $_"
+        Exit 1
+    }  
+} Else {
+    Write-Output "$env:COMPUTERNAME is not part of the Active Directory domain $domainName and already part of a Windows Workgroup."
+    Exit 0
 }
 ```
 
