@@ -144,7 +144,6 @@ Resources:
                     - StringEquals: Unjoin
                       Variable: '{{DomainJoinActivity}}'
                   NextStep: unjoinDomain
-            name: chooseDomainJoinActivity
             isCritical: 'true'
             isEnd: false
           - name: joinDomain
