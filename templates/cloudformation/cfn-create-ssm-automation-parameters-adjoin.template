@@ -213,7 +213,7 @@ Resources:
                       If (-not (Get-WindowsFeature -Name 'RSAT-AD-Tools' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty 'Installed')) {
                           Write-Output 'Installing RSAT AD Tools to allow domain joining'
                           Try {
-                              $Null = Add-WindowsFeature -Name 'RSAT-AD-Tools '-ErrorAction Stop
+                              $Null = Add-WindowsFeature -Name 'RSAT-AD-Tools' -ErrorAction Stop
                           } Catch [System.Exception] {
                               Write-Output "Failed to install RSAT AD Tools $_"
                               Exit 1
